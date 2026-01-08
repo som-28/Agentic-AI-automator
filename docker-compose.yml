@@ -1,0 +1,20 @@
+services:
+  agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SERPAPI_KEY=${SERPAPI_KEY}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - DEFAULT_FROM=${DEFAULT_FROM}
+      - PLANNER_MODE=${PLANNER_MODE:-rule}
+      - SCRAPER_MODE=${SCRAPER_MODE:-requests}
+    env_file:
+      - .env
+    volumes:
+      - ./agent_memory.json:/app/agent_memory.json
+    restart: unless-stopped

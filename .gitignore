@@ -1,0 +1,76 @@
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# Environment
+.env
+.env.local
+agent_memory.json
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.log
+
+# Test files from root
+test_*.py
+
+# User uploaded files
+*.pdf
+*.docx
+!docs/*.pdf
+!docs/*.docx
+
+# Streamlit
+.streamlit/
+
+# Playwright
+.playwright/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# OS
+.DS_Store
+Thumbs.db

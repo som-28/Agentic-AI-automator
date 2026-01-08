@@ -1,0 +1,15 @@
+```mermaid
+flowchart TD
+  User[[User]] -->|POST /run| API[FastAPI]
+  API --> Planner
+  Planner -->|plan (JSON)| Controller
+  Controller -->|step1| Search[Search Tool]
+  Controller -->|step2| Scraper[Scraper Tool]
+  Controller -->|step3| Summariser[Summariser Tool]
+  Controller -->|step4| Email[Email Tool]
+  Controller --> Logger[Logger Tool]
+  Search --> Controller
+  Scraper --> Controller
+  Summariser --> Controller
+  Email --> Controller
+``` 

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: task-automation-agent
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PLANNER_MODE
+        value: rule
+      - key: SCRAPER_MODE
+        value: requests
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SERPAPI_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM
+        sync: false
