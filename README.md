@@ -230,4 +230,4 @@ MIT License - see LICENSE file for details
 
 ## 📧 Support
 
-For issues and questions, please open a GitHub issue or contact the maintainers.
+For issues and questions, please open a GitHub issue or contact somuuu23@gmail.com.
