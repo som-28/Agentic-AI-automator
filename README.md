@@ -257,4 +257,3 @@ External integrations may operate in fallback or simulation mode. Verify the ser
 - More task-specific verification evidence.
 - Production database and authentication boundary.
 
-See [AURA_Implementation_Roadmap.md](AURA_Implementation_Roadmap.md) for the phased implementation plan and [AURA_Copilot_Implementation_Spec.md](AURA_Copilot_Implementation_Spec.md) for the complete product contract.
