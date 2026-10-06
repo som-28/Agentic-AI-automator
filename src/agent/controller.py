@@ -6,78 +6,144 @@ from __future__ import annotations
 import asyncio
 import importlib
 from typing import List
+from src.agent.models import TaskEvent, validate_plan
+from src.agent.task_graph import TaskGraph
+from src.agent.verifier import verify_tool_output
+from src.agent.tool_registry import default_tool_registry
+from src.agent.recovery import should_retry
 from src.utils.config import load_config
 
 
 class Controller:
     def __init__(self, cfg=None, use_enhanced=True):
         self.cfg = cfg or load_config()
-        # tool registry maps tool name to module path
-        # Use enhanced tools if available
-        if use_enhanced:
-            self.tool_map = {
-                "search": "src.tools.search_tool_enhanced",
-                "scrape": "src.tools.scraper_tool_enhanced",
-                "summarize": "src.tools.summarizer_tool",
-                "summarise": "src.tools.summarizer_tool",
-                "email": "src.tools.email_tool",
-                "logger": "src.tools.logger_tool",
-                "resume_parser": "src.tools.resume_parser_tool",
-                "resume_analyzer": "src.tools.resume_analyzer_tool",
-                "job_matcher": "src.tools.job_matcher_tool",
-            }
-        else:
-            self.tool_map = {
-                "search": "src.tools.search_tool",
-                "scrape": "src.tools.scraper_tool",
-                "summarize": "src.tools.summarizer_tool",
-                "summarise": "src.tools.summarizer_tool",
-                "email": "src.tools.email_tool",
-                "logger": "src.tools.logger_tool",
-                "resume_parser": "src.tools.resume_parser_tool",
-                "resume_analyzer": "src.tools.resume_analyzer_tool",
-                "job_matcher": "src.tools.job_matcher_tool",
-            }
+        self.events: List[TaskEvent] = []
+        self.registry = default_tool_registry(use_enhanced=use_enhanced)
+        self.tool_map = {
+            name: self.registry.get(name).module_path
+            for name in self.registry.names()
+        }
+
+    def get_events(self) -> List[TaskEvent]:
+        return list(self.events)
+
+    def _emit_event(self, event_type: str, message: str, task_id=None, **metadata):
+        self.events.append(
+            TaskEvent(
+                event_type=event_type,
+                task_id=str(task_id) if task_id is not None else None,
+                message=message,
+                metadata=metadata,
+            )
+        )
 
     async def execute_plan(self, plan: dict) -> List[str]:
+        validated_plan = validate_plan(plan, self.registry)
+        ordered_steps = TaskGraph(validated_plan.steps).ordered_steps()
         logs = []
-        steps = plan.get("steps", [])
-        context = {"plan_input": plan.get("input")}
+        task_status = {}
+        context = {"plan_input": validated_plan.input}
+        self.events = []
+        self._emit_event("plan_started", "Plan execution started")
 
-        for step in steps:
-            tool_name = step.get("tool")
-            args = step.get("args", {})
-            logs.append(f"Starting step {step.get('id')} -> {tool_name}")
-            try:
-                tool_logs, output = await self._invoke_tool(tool_name, args, context)
-                for l in tool_logs:
-                    logs.append(l)
-                # optionally store results in context
-                if output is not None:
-                    context_key = f"step_{step.get('id')}_output"
-                    context[context_key] = output
-                logs.append(f"Finished step {step.get('id')} -> {tool_name}")
-            except Exception as e:
-                err = f"Error in step {step.get('id')} ({tool_name}): {e}"
-                logs.append(err)
-                # retry once for transient errors
-                logs.append(f"Retrying step {step.get('id')} -> {tool_name}")
+        for step in ordered_steps:
+            tool_name = step.tool
+            args = step.args
+            task_id = step.id
+            task_key = str(task_id)
+            blocked_by = [
+                str(dependency)
+                for dependency in step.dependencies
+                if task_status.get(str(dependency)) != "COMPLETED"
+            ]
+            if blocked_by:
+                task_status[task_key] = "SKIPPED"
+                logs.append(f"Skipped step {task_id} -> {tool_name}: dependency failed")
+                self._emit_event(
+                    "task_skipped",
+                    f"Skipped {tool_name}; dependency did not complete",
+                    task_id=task_id,
+                    tool=tool_name,
+                    blocked_by=blocked_by,
+                )
+                continue
+
+            logs.append(f"Starting step {task_id} -> {tool_name}")
+            self._emit_event(
+                "task_started",
+                f"Started {tool_name}",
+                task_id=task_id,
+                tool=tool_name,
+            )
+            tool_spec = self.registry.get(tool_name)
+            retry_count = 0
+            while True:
                 try:
                     tool_logs, output = await self._invoke_tool(tool_name, args, context)
                     for l in tool_logs:
                         logs.append(l)
+                    verification = verify_tool_output(tool_name, output)
+                    if not verification.verified:
+                        raise ValueError(
+                            "Verification failed: " + "; ".join(verification.issues)
+                        )
+                    self._emit_event(
+                        "task_verified",
+                        f"Verified {tool_name} output"
+                        if retry_count == 0
+                        else f"Verified {tool_name} output after retry",
+                        task_id=task_id,
+                        tool=tool_name,
+                        confidence=verification.confidence,
+                        evidence=verification.evidence,
+                    )
                     if output is not None:
-                        context[f"step_{step.get('id')}_output"] = output
-                    logs.append(f"Finished retry step {step.get('id')} -> {tool_name}")
-                except Exception as e2:
-                    logs.append(f"Failed retry for step {step.get('id')}: {e2}")
-                    # continue to next step
+                        context[f"step_{task_id}_output"] = output
+                    task_status[task_key] = "COMPLETED"
+                    completion_label = "Finished step" if retry_count == 0 else "Finished retry step"
+                    logs.append(f"{completion_label} {task_id} -> {tool_name}")
+                    self._emit_event(
+                        "task_completed",
+                        f"Completed {tool_name}" if retry_count == 0 else f"Completed {tool_name} after retry",
+                        task_id=task_id,
+                        tool=tool_name,
+                        retry_count=retry_count,
+                    )
+                    break
+                except Exception as error:
+                    failure_message = f"Error in step {task_id} ({tool_name}): {error}"
+                    logs.append(failure_message)
+                    self._emit_event(
+                        "task_failed",
+                        failure_message,
+                        task_id=task_id,
+                        tool=tool_name,
+                        retry_count=retry_count,
+                        error=str(error),
+                    )
+                    max_retries = tool_spec.max_retries if tool_spec else 0
+                    if not should_retry(error, retry_count, max_retries):
+                        task_status[task_key] = "FAILED"
+                        break
+
+                    retry_count += 1
+                    logs.append(f"Retrying step {task_id} -> {tool_name} ({retry_count}/{max_retries})")
+                    self._emit_event(
+                        "recovery_started",
+                        f"Retrying {tool_name}",
+                        task_id=task_id,
+                        tool=tool_name,
+                        retry_count=retry_count,
+                        max_retries=max_retries,
+                    )
+        self._emit_event("plan_completed", "Plan execution completed")
         return logs
 
     async def _invoke_tool(self, tool_name: str, args: dict, context: dict):
-        module_path = self.tool_map.get(tool_name)
-        if not module_path:
+        tool = self.registry.get(tool_name)
+        if not tool:
             raise ValueError(f"Unknown tool: {tool_name}")
+        module_path = tool.module_path
 
         module = importlib.import_module(module_path)
         # Each tool exposes a class named <CamelCase>Tool, but we provide a runtime function run()

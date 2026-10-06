@@ -44,7 +44,10 @@ htmlcov/
 # Environment
 .env
 .env.local
+.env.*
+!.env.example
 agent_memory.json
+.aura_runs.json
 
 # Temporary files
 temp/
@@ -67,10 +70,20 @@ test_*.py
 # Playwright
 .playwright/
 
+# Local tools and generated reports
+.mypy_cache/
+.ruff_cache/
+.cache/
+*.sqlite
+*.sqlite3
+reports/
+screenshots/
+
+# Local AURA planning documents
+AURA_Copilot_Implementation_Spec.md
+AURA_Implementation_Roadmap.md
+
 # OS specific
 .DS_Store
 Thumbs.db
 
-# OS
-.DS_Store
-Thumbs.db

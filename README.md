@@ -1,233 +1,260 @@
-# Personal Task Automation Agent 🤖
+# AURA
 
-A complete AI-powered automation agent with natural language task execution, resume analysis, and job matching capabilities. Built with Python, FastAPI, Streamlit, and OpenAI.
+## Autonomous Unified Reasoning & Automation Agent
 
-## 🌟 Features
+**Plan. Act. Verify. Recover.**
 
-### Task Automation
-- **Natural Language Commands** - Execute complex tasks with simple English instructions
-- **Multi-Step Planning** - AI-powered (GPT-4) or rule-based task planning
-- **Web Search** - Real-time search using SerpAPI with Google results
-- **Web Scraping** - JavaScript-capable scraping with Playwright
-- **Content Summarization** - AI-powered summaries using OpenAI
-- **Email Notifications** - Send results via SMTP with clickable HTML links
-- **Execution Logging** - Complete task history and logs
+AURA turns a natural-language goal into an observable, tool-backed workflow. It plans the work, executes registered capabilities, verifies structured outputs, recovers from bounded failures, and keeps a persistent execution trail that can be inspected from the UI or API.
 
-### Resume Analysis & Job Matching
-- **Resume Parser** - Extract text from PDF, DOCX, and TXT files
-- **OCR Support** - Handle scanned PDFs with Tesseract OCR
-- **AI Analysis** - Intelligent resume analysis with skill extraction
-- **Job Matching** - Automatic job search based on resume analysis
-- **Multi-format Support** - Works with various document formats
-
-### User Interface
-- **Streamlit GUI** - Modern web interface for all features
-- **FastAPI Backend** - RESTful API for programmatic access
-- **Real-time Updates** - Live execution progress and results
-- **Task History** - View and manage previous executions
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.10+
-- Git
-- Tesseract OCR (for scanned PDF support)
-- Poppler (for PDF processing)
-
-### Installation
-
-1. **Clone the repository**
-```bash
-git clone <your-repo-url>
-cd Project
+```text
+User goal
+   -> Plan
+   -> Registered tools
+   -> Execute
+   -> Verify
+   -> Recover when needed
+   -> Persist and explain
 ```
 
-2. **Create virtual environment**
+## What AURA Does
+
+### Goal execution
+
+- Rule-based planning for deterministic offline operation.
+- Optional OpenAI-assisted planning when configured.
+- Typed plan validation before execution.
+- Registered tools only: unknown or unsafe tool names are rejected.
+- Dependency-aware task ordering.
+- Structured execution events, verification, retries, and failure states.
+
+### Available capabilities
+
+- Web search with live or explicitly configured fallback behavior.
+- Web scraping through requests or Playwright modes.
+- Content summarization.
+- Email sending or clearly labelled simulation when SMTP is unavailable.
+- Resume parsing for PDF, DOCX, and TXT files.
+- Resume analysis with AI or deterministic local fallback.
+- Job matching from an analyzed resume.
+- Execution logging.
+
+### User interface
+
+The Streamlit application provides:
+
+- A goal-first Start view.
+- Resume analysis and job matching.
+- Backend-backed execution History.
+- Registered Capabilities with risk and retry metadata.
+- Insights calculated from persisted runs.
+- Live task events, verification, and recovery details.
+
+The interface uses a warm paper canvas, navy navigation styling, coral actions, teal execution accents, modular typography, responsive spacing, and no emoji-based UI controls.
+
+## Architecture
+
+```text
+Streamlit UI
+    |
+    v
+FastAPI backend
+    |
+    +--> Planner (rule or LLM)
+    |
+    +--> Typed plan validation
+    |
+    +--> Tool registry
+    |       +--> Search
+    |       +--> Scraper
+    |       +--> Summarizer
+    |       +--> Resume tools
+    |       +--> Job matcher
+    |       +--> Email
+    |
+    +--> Task graph and controller
+    |
+    +--> Verification and bounded recovery
+    |
+    +--> Atomic JSON run store
+```
+
+The backend owns execution and persistence. The Streamlit UI calls the backend for task execution, run history, resume analysis, job matching, capabilities, and evaluation data.
+
+## Project Structure
+
+```text
+src/
+├── agent/
+│   ├── controller.py       # Dependency-aware execution and events
+│   ├── evaluator.py        # Metrics from persisted runs
+│   ├── models.py           # Typed plans, tasks, events, and results
+│   ├── planner.py          # Deterministic planner
+│   ├── planner_llm.py      # Optional OpenAI planner
+│   ├── recovery.py         # Failure classification and retry policy
+│   ├── run_store.py        # Atomic JSON execution history
+│   ├── task_graph.py       # Dependency ordering and cycle checks
+│   ├── tool_registry.py    # Registered tool metadata
+│   └── verifier.py         # Deterministic output verification
+├── tools/                  # Independent tool adapters
+├── ui/
+│   ├── components.py       # Reusable Streamlit components
+│   └── theme.py            # AURA visual system
+├── app_gui.py              # Streamlit entry point
+└── main.py                 # FastAPI entry point
+tests/                     # Planner, controller, API, recovery, and verifier tests
+
+```
+
+## Quick Start
+
+### Requirements
+
+- Python 3.10 or newer.
+- Optional API credentials for live OpenAI, SerpAPI, Google Search, or SMTP features.
+- Optional Playwright browser installation for JavaScript-heavy pages.
+- Optional Tesseract and Poppler installations for scanned PDF OCR.
+
+### Install
+
 ```bash
+git clone <repository-url>
+cd Agentic-AI-automator
 python -m venv .venv
-.venv\Scripts\Activate.ps1  # Windows
-source .venv/bin/activate    # Linux/Mac
-```
-
-3. **Install dependencies**
-```bash
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. **Configure environment**
-```bash
-cp .env.example .env
+On Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-Edit `.env` with your API keys:
-```env
-OPENAI_API_KEY=your_openai_key
-SERPAPI_KEY=your_serpapi_key
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-DEFAULT_FROM=your_email@gmail.com
-```
+Copy `.env.example` to `.env` and add only the credentials required for the services you plan to use. `.env` is ignored by Git.
 
-### Running the Application
+### Start the backend
 
-**Streamlit GUI (Recommended)**
-```bash
-streamlit run src/app_gui.py
-```
-Open http://localhost:8501
-
-**FastAPI Backend**
 ```bash
 uvicorn src.main:app --reload --port 8000
 ```
-API docs at http://localhost:8000/docs
 
-## 📖 Usage Examples
+FastAPI documentation is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-### Task Execution
-```
-"Search for latest AI news and email me a summary"
-"Find Python developer jobs in remote and send results to my email"
-"Scrape data from example.com and summarize the content"
-```
+### Start the UI
 
-### Resume Analysis
-1. Upload your resume (PDF/DOCX/TXT)
-2. Click "Analyze Resume"
-3. View extracted skills, experience, and career interests
-4. Search for matching jobs automatically
-
-## 🏗️ Project Structure
-
-```
-Project/
-├── src/
-│   ├── agent/              # Core agent logic
-│   │   ├── planner.py      # Rule-based planner
-│   │   ├── planner_llm.py  # LLM-based planner
-│   │   ├── controller.py   # Task execution controller
-│   │   └── memory.py       # Context management
-│   ├── tools/              # Modular tool system
-│   │   ├── search_tool_enhanced.py
-│   │   ├── scraper_tool_enhanced.py
-│   │   ├── summarizer_tool.py
-│   │   ├── email_tool.py
-│   │   ├── resume_parser_tool.py
-│   │   ├── resume_analyzer_tool.py
-│   │   └── job_matcher_tool.py
-│   ├── app_gui.py          # Streamlit GUI
-│   └── main.py             # FastAPI application
-├── tests/                  # Unit and integration tests
-├── .github/workflows/      # CI/CD pipelines
-├── Dockerfile              # Container configuration
-├── docker-compose.yml      # Multi-container setup
-└── requirements.txt        # Python dependencies
-```
-
-## 🛠️ Technology Stack
-
-- **Backend**: Python 3.10+, FastAPI, asyncio
-- **Frontend**: Streamlit
-- **AI/ML**: OpenAI GPT-4, sentence-transformers
-- **Search**: SerpAPI, Google Custom Search
-- **Scraping**: Playwright (JavaScript support)
-- **OCR**: Tesseract, pdf2image
-- **Document Parsing**: PyPDF2, python-docx
-- **Testing**: pytest, pytest-asyncio
-- **CI/CD**: GitHub Actions
-- **Deployment**: Docker, Docker Compose
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENAI_API_KEY` | OpenAI API key for AI features | Yes |
-| `SERPAPI_KEY` | SerpAPI key for web search | Yes |
-| `SMTP_HOST` | SMTP server hostname | For email |
-| `SMTP_PORT` | SMTP server port | For email |
-| `SMTP_USER` | SMTP username | For email |
-| `SMTP_PASSWORD` | SMTP password | For email |
-| `PLANNER_MODE` | `rule` or `llm` | Optional |
-| `SCRAPER_MODE` | `playwright` or `basic` | Optional |
-
-## 🚢 Deployment
-
-### Docker
-```bash
-docker-compose up -d
-```
-
-### Streamlit Cloud
-1. Push to GitHub
-2. Connect repository to Streamlit Cloud
-3. Add environment variables in dashboard
-4. Deploy
-
-### Render/Railway
-1. Create new web service
-2. Connect GitHub repository
-3. Set environment variables
-4. Deploy with `streamlit run src/app_gui.py`
-
-## 🧪 Testing
+In a second terminal:
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src tests/
-
-# Run specific test
-pytest tests/test_agent.py
+export AURA_API_URL=http://127.0.0.1:8000
+streamlit run src/app_gui.py
 ```
 
-## 📝 API Documentation
+Open [http://localhost:8501](http://localhost:8501).
 
-### POST /run
-Execute a natural language task
+On Windows PowerShell:
 
-**Request:**
+```powershell
+$env:AURA_API_URL = "http://127.0.0.1:8000"
+streamlit run src/app_gui.py
+```
+
+## Configuration
+
+| Variable | Purpose | Required |
+| --- | --- | --- |
+| `AURA_API_URL` | Backend URL used by the UI | No, defaults to `http://127.0.0.1:8000` |
+| `PLANNER_MODE` | `rule` or `llm` planner selection | No, defaults to `rule` |
+| `OPENAI_API_KEY` | LLM planning and analysis | Optional |
+| `SERPAPI_KEY` | Live web search | Optional |
+| `GOOGLE_API_KEY` | Google Custom Search | Optional |
+| `GOOGLE_CSE_ID` | Google Custom Search engine | Optional |
+| `SCRAPER_MODE` | `basic` or `playwright` scraping | Optional |
+| `SMTP_HOST` | SMTP server for email delivery | Optional |
+| `SMTP_PORT` | SMTP server port | Optional |
+| `SMTP_USER` | SMTP username | Optional |
+| `SMTP_PASSWORD` | SMTP password or app password | Optional |
+| `DEFAULT_FROM` | Default sender address | Optional |
+| `AURA_RUN_STORE` | Custom path for persisted run records | Optional |
+
+When a live service is not configured, AURA reports fallback, simulation, or unavailable status rather than silently claiming live external data.
+
+## API
+
+### Health and discovery
+
+```text
+GET /health
+GET /tools
+GET /metrics
+GET /evaluation
+```
+
+### Run a goal
+
+```http
+POST /run
+Content-Type: application/json
+```
+
 ```json
 {
-  "command": "Search for AI news and email results",
-  "email": "user@example.com"
+  "goal": "Find remote Python internships and summarize the best matches",
+  "planner": "rule"
 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "plan": {...},
-  "logs": [...],
-  "timestamp": "2025-11-18T..."
-}
+The response includes a `run_id`, final status, validated plan, logs, structured events, task counts, and verification counts.
+
+### Inspect runs
+
+```text
+GET /runs
+GET /runs/{run_id}
 ```
 
-## 🤝 Contributing
+### Resume workflows
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+```text
+POST /resume/analyze
+POST /resume/match
+```
 
-## 📄 License
+Resume analysis accepts a base64-encoded PDF, DOCX, or TXT payload with a 10 MB limit. The UI uses these endpoints directly, so parsing and matching remain backend-owned operations.
 
-MIT License - see LICENSE file for details
+## Testing
 
-## 🙏 Acknowledgments
+Run the complete suite:
 
-- OpenAI for GPT models
-- SerpAPI for search capabilities
-- Streamlit for the amazing UI framework
-- All open-source contributors
+```bash
+pytest -q
+```
 
-## 📧 Support
+The tests cover typed plan validation, dependency ordering, verification, bounded recovery, API validation, run persistence, resume workflows, and evaluation metrics. Tests are deterministic and do not require live API credentials.
 
-For issues and questions, please open a GitHub issue or contact somuuu23@gmail.com.
+## Persistence and Privacy
+
+Execution records are stored in `.aura_runs.json` by default. The file is ignored by Git because it can contain goals, outputs, and execution metadata. Set `AURA_RUN_STORE` to use another local path.
+
+Do not commit `.env` files, API keys, uploaded resumes, personal documents, `.aura_runs.json`, generated reports, or sensitive logs.
+
+External integrations may operate in fallback or simulation mode. Verify the service status before treating a result as live external data.
+
+## Current Limitations
+
+- The default run store is a local JSON file rather than a multi-user database.
+- Some search and analysis fallbacks are intentionally lightweight.
+- OCR requires system packages that are not installed by Python dependencies alone.
+- LLM planner comparison requires an OpenAI configuration and real benchmark runs.
+- Streamlit is designed for a local or small-team demonstration rather than high-concurrency production serving.
+
+## Roadmap
+
+- Benchmark suite for rule and LLM planners.
+- Richer task graph visualization.
+- Persistent user preference memory with secret filtering.
+- More task-specific verification evidence.
+- Production database and authentication boundary.
+
+See [AURA_Implementation_Roadmap.md](AURA_Implementation_Roadmap.md) for the phased implementation plan and [AURA_Copilot_Implementation_Spec.md](AURA_Copilot_Implementation_Spec.md) for the complete product contract.

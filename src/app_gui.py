@@ -12,63 +12,29 @@ except ImportError:
     print("Streamlit not installed. Please run: pip install streamlit")
     exit(1)
 
-import asyncio
 import os
 import sys
-import json
+import base64
 from datetime import datetime
 from typing import Optional
+
+import requests
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.agent.planner import Planner as RulePlanner
-from src.agent.planner_llm import LLMPlanner
-from src.agent.controller import Controller
 from src.utils.config import load_config
+from src.agent.tool_registry import default_tool_registry
+from src.ui.components import render_empty_state, render_event_stream, render_metric, render_page_header
+from src.ui.theme import apply_theme
 
 
 # Page configuration
 st.set_page_config(
-    page_title="Task Automation Agent",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="AURA | Autonomous task execution",
+    layout="wide"
 )
-
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 1rem;
-    }
-    .success-box {
-        padding: 1rem;
-        background-color: #d4edda;
-        border-left: 5px solid #28a745;
-        border-radius: 5px;
-        margin: 1rem 0;
-    }
-    .error-box {
-        padding: 1rem;
-        background-color: #f8d7da;
-        border-left: 5px solid #dc3545;
-        border-radius: 5px;
-        margin: 1rem 0;
-    }
-    .info-box {
-        padding: 1rem;
-        background-color: #d1ecf1;
-        border-left: 5px solid #17a2b8;
-        border-radius: 5px;
-        margin: 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+apply_theme()
 
 # Initialize session state
 if "history" not in st.session_state:
@@ -85,35 +51,31 @@ def get_planner_mode():
     return cfg.get("PLANNER_MODE", "rule")
 
 
+def get_api_url() -> str:
+    return os.getenv("AURA_API_URL", "http://127.0.0.1:8000").rstrip("/")
+
+
 def execute_command_async(command: str, email: Optional[str] = None):
-    """Execute a command using the agent."""
+    """Execute a goal through the FastAPI backend."""
     try:
         cfg = load_config()
         planner_mode = get_planner_mode()
-        
-        # Choose planner
-        if planner_mode == "llm" and cfg.get("OPENAI_API_KEY"):
-            planner = LLMPlanner(cfg)
-        else:
-            planner = RulePlanner(cfg)
-        
-        # Create plan
-        plan = planner.plan(command, email)
-        
-        # Execute plan
-        controller = Controller(cfg, use_enhanced=True)
-        
-        # Run async execution
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        logs = loop.run_until_complete(controller.execute_plan(plan))
-        loop.close()
-        
+
+        api_url = get_api_url()
+        response = requests.post(
+            f"{api_url}/run",
+            json={"goal": command, "email": email, "planner": planner_mode},
+            timeout=120,
+        )
+        response.raise_for_status()
+        record = response.json()
+        record["success"] = record.get("status") == "completed"
+        return record
+    except requests.RequestException as error:
         return {
-            "success": True,
-            "plan": plan,
-            "logs": logs,
-            "timestamp": datetime.now().isoformat()
+            "success": False,
+            "error": f"AURA backend unavailable: {error}",
+            "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
         return {
@@ -124,95 +86,64 @@ def execute_command_async(command: str, email: Optional[str] = None):
 
 
 def main():
-    # Header
-    st.markdown('<div class="main-header">🤖 Personal Task Automation Agent</div>', unsafe_allow_html=True)
-    
-    # Sidebar with configuration info
-    with st.sidebar:
-        st.header("⚙️ Configuration")
-        cfg = load_config()
-        
-        planner_mode = get_planner_mode()
-        st.info(f"**Planner Mode:** {planner_mode.upper()}")
-        
-        st.subheader("API Status")
-        if cfg.get("OPENAI_API_KEY"):
-            st.success("✅ OpenAI API")
-        else:
-            st.warning("⚠️ OpenAI API (using fallback)")
-        
-        if cfg.get("SERPAPI_KEY"):
-            st.success("✅ SerpAPI")
-        else:
-            st.warning("⚠️ SerpAPI (using demo mode)")
-        
-        if cfg.get("SMTP_HOST"):
-            st.success("✅ SMTP Email")
-        else:
-            st.warning("⚠️ Email (demo mode)")
-        
-        st.markdown("---")
-        st.subheader("📚 Quick Help")
-        st.markdown("""
-        **Task Examples:**
-        - "Search for AI news and email me summary"
-        - "Find Python tutorials and summarize"
-        - "Scrape https://example.com"
-        
-        **Resume Analysis:**
-        - Upload PDF/DOCX/TXT resume
-        - Get AI-powered analysis
-        - Find matching jobs
-        """)
-    
+    render_page_header(
+        "AURA / CONTROL CENTER",
+        "What can AURA take care of?",
+        "Describe the outcome you want. AURA will plan the steps, do the work, and show you what happened.",
+    )
     # Main tabs
-    tab1, tab2, tab3 = st.tabs(["🚀 Task Execution", "📄 Resume Analysis", "📜 History"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Start", "Resume", "History", "Capabilities", "Insights"]
+    )
     
     # ========== Tab 1: Task Execution ==========
     with tab1:
-        st.header("Natural Language Task Execution")
-        st.markdown("Enter a command in natural language and let the agent handle it.")
+        st.subheader("Tell AURA what you need")
+        st.caption("Use plain language. Include the result you want, not the steps to get there.")
         
         col1, col2 = st.columns([3, 1])
         with col1:
             command = st.text_area(
-                "Command",
-                placeholder="e.g., Search for latest AI news and email me a summary",
+                "Your goal",
+                placeholder="e.g., Compare the latest AI agent frameworks and summarize the differences",
                 height=100,
                 key="task_command"
             )
         with col2:
             email = st.text_input(
-                "Email (optional)",
+                "Send result to (optional)",
                 placeholder="your@email.com",
                 key="task_email"
             )
         
-        if st.button("🚀 Execute Task", type="primary", use_container_width=True):
+        if st.button("Run with AURA", type="primary", use_container_width=True):
             if not command.strip():
                 st.error("Please enter a command")
             else:
                 with st.spinner("Executing task..."):
                     result = execute_command_async(command, email if email.strip() else None)
                     
-                    # Add to history
-                    st.session_state.history.insert(0, {
-                        "command": command,
-                        "result": result,
-                        "type": "task"
-                    })
-                    
                     if result["success"]:
-                        st.markdown('<div class="success-box">✅ Task completed successfully!</div>', unsafe_allow_html=True)
+                        st.success("AURA finished this goal")
+
+                        metrics = st.columns(3)
+                        with metrics[0]:
+                            render_metric("Tasks", str(len(result["plan"].get("steps", []))))
+                        with metrics[1]:
+                            render_metric("Events", str(len(result.get("events", []))))
+                        with metrics[2]:
+                            render_metric("Run ID", result.get("run_id", "-")[:8])
                         
-                        with st.expander("📋 Plan Details"):
+                        with st.expander("Plan details"):
                             st.json(result["plan"])
                         
-                        with st.expander("📝 Execution Logs"):
+                        with st.expander("Execution log"):
                             for log in result["logs"]:
                                 st.text(log)
+                        with st.expander("Live event stream", expanded=True):
+                            render_event_stream(result.get("events", []))
                     else:
-                        st.markdown(f'<div class="error-box">❌ Error: {result["error"]}</div>', unsafe_allow_html=True)
+                        st.error(f"Task failed: {result['error']}")
     
     # ========== Tab 2: Resume Analysis ==========
     with tab2:
@@ -222,7 +153,7 @@ def main():
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            st.subheader("📤 Upload Resume")
+            st.subheader("Upload resume")
             uploaded_file = st.file_uploader(
                 "Choose a file",
                 type=["pdf", "docx", "txt"],
@@ -232,46 +163,34 @@ def main():
             if uploaded_file:
                 st.success(f"Uploaded: {uploaded_file.name}")
                 
-                if st.button("🔍 Analyze Resume", type="primary", use_container_width=True):
+                if st.button("Analyze resume", type="primary", use_container_width=True):
                     with st.spinner("Analyzing resume..."):
                         try:
-                            # Save uploaded file temporarily
-                            temp_path = os.path.join("temp", uploaded_file.name)
-                            os.makedirs("temp", exist_ok=True)
-                            with open(temp_path, "wb") as f:
-                                f.write(uploaded_file.getbuffer())
-                            
-                            # Parse resume
-                            from src.tools.resume_parser_tool import run as parse_resume
-                            parse_logs, parse_output = parse_resume({"file_path": temp_path}, {})
-                            
-                            if "error" in parse_output:
-                                st.error(f"Parse error: {parse_output['error']}")
-                            else:
-                                # Analyze resume
-                                from src.tools.resume_analyzer_tool import run as analyze_resume
-                                context = {"resume_data": parse_output}
-                                analyze_logs, analyze_output = analyze_resume({}, context)
-                                
-                                if "error" in analyze_output:
-                                    st.error(f"Analysis error: {analyze_output['error']}")
-                                else:
-                                    st.session_state.resume_analysis = {
-                                        "parse": parse_output,
-                                        "analysis": analyze_output["analysis"],
-                                        "file_name": uploaded_file.name
-                                    }
-                                    st.success("✅ Resume analyzed successfully!")
-                            
-                            # Cleanup
-                            if os.path.exists(temp_path):
-                                os.remove(temp_path)
-                            
+                            response = requests.post(
+                                f"{get_api_url()}/resume/analyze",
+                                json={
+                                    "file_name": uploaded_file.name,
+                                    "content_base64": base64.b64encode(
+                                        uploaded_file.getvalue()
+                                    ).decode("ascii"),
+                                },
+                                timeout=120,
+                            )
+                            response.raise_for_status()
+                            analyzed = response.json()
+                            st.session_state.resume_analysis = {
+                                "parse": analyzed["parsed"],
+                                "analysis": analyzed["analysis"],
+                                "file_name": analyzed["file_name"],
+                            }
+                            st.success("Resume analyzed by AURA backend")
+                        except requests.RequestException as error:
+                            st.error(f"AURA backend unavailable: {error}")
                         except Exception as e:
                             st.error(f"Error: {str(e)}")
         
         with col2:
-            st.subheader("📊 Analysis Results")
+            st.subheader("Analysis results")
             
             if st.session_state.resume_analysis:
                 analysis = st.session_state.resume_analysis["analysis"]
@@ -296,33 +215,42 @@ def main():
                 
                 # Job search section
                 st.markdown("---")
-                st.subheader("🔍 Find Matching Jobs")
+                st.subheader("Find matching jobs")
                 
                 location = st.text_input("Location", value="remote", key="job_location")
                 num_results = st.slider("Number of results", 5, 20, 10, key="job_limit")
                 
-                if st.button("🎯 Search Jobs", type="primary", use_container_width=True):
+                if st.button("Search jobs", type="primary", use_container_width=True):
                     with st.spinner("Searching for jobs..."):
                         try:
-                            from src.tools.job_matcher_tool import run as search_jobs
-                            context = {"resume_analysis": {"analysis": analysis}}
-                            job_args = {"location": location, "limit": num_results}
-                            job_logs, job_output = search_jobs(job_args, context)
-                            
-                            if "error" in job_output:
-                                st.error(f"Search error: {job_output['error']}")
-                            else:
-                                st.session_state.job_results = job_output
-                                st.success(f"✅ Found {len(job_output['job_matches'])} results!")
+                            response = requests.post(
+                                f"{get_api_url()}/resume/match",
+                                json={
+                                    "analysis": analysis,
+                                    "location": location,
+                                    "limit": num_results,
+                                },
+                                timeout=120,
+                            )
+                            response.raise_for_status()
+                            st.session_state.job_results = response.json()
+                            st.success(
+                                f"Found {len(st.session_state.job_results['job_matches'])} results"
+                            )
+                        except requests.RequestException as error:
+                            st.error(f"AURA backend unavailable: {error}")
                         except Exception as e:
                             st.error(f"Error: {str(e)}")
             else:
-                st.info("Upload and analyze a resume to see results here.")
+                render_empty_state(
+                    "Your analysis will appear here",
+                    "Upload a resume to see results.",
+                )
         
         # Display job results
         if st.session_state.job_results:
             st.markdown("---")
-            st.subheader("💼 Job Matches")
+            st.subheader("Job matches")
             
             jobs = st.session_state.job_results["job_matches"]
             query = st.session_state.job_results.get("search_query", "")
@@ -339,29 +267,96 @@ def main():
     # ========== Tab 3: History ==========
     with tab3:
         st.header("Execution History")
-        
-        if not st.session_state.history:
-            st.info("No execution history yet. Start by executing a task or analyzing a resume.")
+        api_url = get_api_url()
+        try:
+            history_response = requests.get(f"{api_url}/runs", timeout=10)
+            history_response.raise_for_status()
+            runs = history_response.json().get("runs", [])
+        except requests.RequestException as error:
+            st.error(f"AURA backend unavailable: {error}")
+            runs = []
+
+        if not runs:
+            st.info("No persisted execution history yet. Start by executing a task.")
         else:
-            if st.button("🗑️ Clear History", key="clear_history"):
-                st.session_state.history = []
-                st.rerun()
-            
-            st.markdown(f"**Total Executions:** {len(st.session_state.history)}")
-            
-            for i, item in enumerate(st.session_state.history, 1):
-                with st.expander(f"{i}. {item.get('command', 'Resume Analysis')} - {item['result'].get('timestamp', '')}"):
-                    if item["type"] == "task":
-                        if item["result"]["success"]:
-                            st.success("✅ Successful")
-                            st.json(item["result"]["plan"])
-                            st.text("Logs:")
-                            for log in item["result"]["logs"]:
-                                st.text(log)
-                        else:
-                            st.error(f"❌ Failed: {item['result']['error']}")
-                    else:
-                        st.json(item["result"])
+            st.markdown(f"**Persisted Executions:** {len(runs)}")
+            for index, run in enumerate(runs, 1):
+                with st.expander(
+                    f"{index}. {run.get('goal', 'Unnamed run')} - {run.get('status', 'unknown').upper()}"
+                ):
+                    st.write(f"Run ID: {run.get('run_id', '-')}")
+                    st.write(f"Created: {run.get('created_at', '-')}")
+                    if run.get("error"):
+                        st.error(run["error"])
+                    if run.get("plan"):
+                        st.json(run["plan"])
+                    render_event_stream(run.get("events", []))
+
+    # ========== Tab 4: Tools ===============
+    with tab4:
+        render_page_header(
+            "AURA / CAPABILITIES",
+            "Registered tools",
+            "These are the capabilities currently available to the controller.",
+        )
+        tool_registry = default_tool_registry(use_enhanced=True)
+        for tool in tool_registry.describe():
+            with st.container(border=True):
+                details = st.columns([2, 4, 1])
+                with details[0]:
+                    st.markdown(f"**{tool.name}**")
+                    st.caption(tool.risk_level.upper())
+                with details[1]:
+                    st.write(tool.description)
+                    st.caption(f"Timeout: {tool.timeout_seconds}s | Retries: {tool.max_retries}")
+                with details[2]:
+                    st.success("AVAILABLE")
+
+    # ========== Tab 5: Evaluation ===============
+    with tab5:
+        render_page_header(
+            "AURA / EVALUATION",
+            "Execution metrics",
+            "Metrics calculated from persisted runs only.",
+        )
+        try:
+            evaluation_response = requests.get(f"{get_api_url()}/evaluation", timeout=10)
+            evaluation_response.raise_for_status()
+            evaluation = evaluation_response.json()
+        except requests.RequestException as error:
+            st.error(f"AURA backend unavailable: {error}")
+            evaluation = None
+
+        if evaluation is not None:
+            metric_columns = st.columns(4)
+            with metric_columns[0]:
+                render_metric("Runs", str(evaluation["total_runs"]))
+            with metric_columns[1]:
+                render_metric("Success rate", f"{evaluation['success_rate']:.0%}")
+            with metric_columns[2]:
+                render_metric("Recovery rate", f"{evaluation['recovery_rate']:.0%}")
+            with metric_columns[3]:
+                render_metric("Verification", f"{evaluation['verification_coverage']:.0%}")
+
+            if not evaluation["total_runs"]:
+                st.info("Run tasks to generate evaluation metrics.")
+            else:
+                st.subheader("Planner comparison")
+                for planner_name, planner_metrics in evaluation["planner_comparison"].items():
+                    planner_columns = st.columns(2)
+                    with planner_columns[0]:
+                        st.markdown(f"**{planner_name.upper()} planner**")
+                    with planner_columns[1]:
+                        st.write(
+                            f"{planner_metrics['runs']} runs · "
+                            f"{planner_metrics['success_rate']:.0%} successful"
+                        )
+                st.subheader("Failure categories")
+                if evaluation["failure_categories"]:
+                    for category, count in evaluation["failure_categories"].items():
+                        st.write(f"{category.replace('_', ' ').capitalize()}: {count}")
+                else:
+                    st.success("No failures recorded")
 
 
 if __name__ == "__main__":
